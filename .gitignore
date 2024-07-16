@@ -1,5 +1,7 @@
 # Model checkpoint file
 *.pth
+/src/output/*
+/src/temp/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

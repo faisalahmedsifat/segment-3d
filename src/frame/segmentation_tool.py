@@ -38,9 +38,10 @@ from vtkmodules.all import vtkPropPicker
 
 from PyQt5.QtCore import QPoint
 import os
+from frame.stl_view import STLView
 
 
-class STLViewer(QMainWindow):
+class SegmentationTool(QMainWindow):
 
     def __init__(self, stl_file):
 
@@ -292,6 +293,11 @@ class STLViewer(QMainWindow):
 
         print("="*80)
         # self.combine_point_clouds()
+        self.show_stl_dialog(os.path.join(self.output_dir , "seg_model.stl"))
+        
+    def show_stl_dialog(self, stl_file):
+        self.stl_dialog = STLView(stl_file, self)
+        self.stl_dialog.exec_()
 
     def load_seg_stl(self, stl_file="seg_model.stl"):
         stl_file = os.path.join(self.output_dir, stl_file)

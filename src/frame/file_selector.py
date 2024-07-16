@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, QFileDialog, QLineEdit, QMessageBox
 import sys
-from frame.stl_viewer import STLViewer
+from frame.segmentation_tool import SegmentationTool
 
 class FileSelector(QMainWindow):
     def __init__(self):
@@ -44,7 +44,7 @@ class FileSelector(QMainWindow):
     def continue_to_app(self):
         if self.stl_file:
             self.hide()
-            self.stl_viewer = STLViewer(self.stl_file)
+            self.stl_viewer = SegmentationTool(self.stl_file)
             self.stl_viewer.show()
         else:
             QMessageBox.warning(self, "No file selected", "Please select an STL file to continue.")
