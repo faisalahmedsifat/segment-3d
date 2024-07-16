@@ -1,0 +1,11 @@
+PyQt5
+vtk
+opencv-python
+torch
+segment-anything
+numpy
+matplotlib
+pillow
+stl
+trimesh
+open3d
