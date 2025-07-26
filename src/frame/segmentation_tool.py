@@ -1,14 +1,8 @@
 import time
-
-
 import cv2
-import open3d as o3d
 from PIL import Image
 import io
-
 import numpy as np
-import torch
-
 import vtkmodules.all as vtk
 
 from PyQt5.QtWidgets import (QApplication, QHBoxLayout, QMainWindow,
@@ -16,8 +10,6 @@ from PyQt5.QtWidgets import (QApplication, QHBoxLayout, QMainWindow,
                              QPushButton, QSizePolicy, QSpacerItem,
 
                              QVBoxLayout, QWidget)
-
-from segment_anything import SamPredictor, sam_model_registry
 
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
@@ -39,6 +31,7 @@ from vtkmodules.all import vtkPropPicker
 from PyQt5.QtCore import QPoint
 import os
 from frame.stl_view import STLView
+from modal_client import get_modal_sam_client
 
 
 class SegmentationTool(QMainWindow):
@@ -86,16 +79,22 @@ class SegmentationTool(QMainWindow):
 
             """
 
-        print("Creating SAM...")
+        print("Initializing Modal SAM client...")
 
-        # the checkpoint of the model
-        self.sam_checkpoint = "../model_checkpoint/sam_vit_b_01ec64.pth"
-
-        self.sam = sam_model_registry["vit_b"](checkpoint=self.sam_checkpoint)
-
-        self.sam.to(device="cuda")
-
-        self.predictor = SamPredictor(self.sam)
+        # Initialize Modal SAM client instead of local model
+        try:
+            self.modal_sam_client = get_modal_sam_client()
+            print("Modal SAM client initialized successfully!")
+            
+            # Check if Modal deployment is healthy
+            if self.modal_sam_client.health_check():
+                print("Modal SAM deployment is healthy and ready!")
+            else:
+                print("Warning: Modal SAM deployment health check failed")
+        except Exception as e:
+            print(f"Failed to initialize Modal SAM client: {e}")
+            print("Please make sure Modal is installed and deployed: pip install modal && modal deploy sam_modal.py")
+            raise
 
         self.setGeometry(100, 100, 800, 600)
 
@@ -564,31 +563,35 @@ class SegmentationTool(QMainWindow):
 
     def generate_mask(self, click_pos, label, image_path):
 
-        image = cv2.imread(image_path)
+        print(f"Generating mask using Modal SAM for image: {image_path}")
+        print(f"Click position: {click_pos}, Label: {label}")
 
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # Use Modal SAM client instead of local predictor
+        try:
+            masks, scores, logits = self.modal_sam_client.predict(image_path, click_pos, label)
+            
+            print(f"Modal SAM returned {len(masks)} masks with scores: {scores}")
+            
+            # Convert to the expected format (matching original behavior)
+            self.mask = np.array(masks, dtype=np.uint8)
+            
+            mask_with_scores = zip(self.mask, scores)
+            self.mask, self.score = max(mask_with_scores, key=lambda x: x[1])
 
-        self.predictor.set_image(image)
+            print("Best mask shape:", self.mask.shape)
+            print("Best score:", self.score)
 
-        self.mask, scores, logits = self.predictor.predict(click_pos, label)
+            self.mask = np.array(self.mask, dtype=np.uint8)
 
-        self.mask = np.array(self.mask, dtype=np.uint8)
+            mask_image_path = self.temp_dir+"/mask.png"
+            cv2.imwrite(mask_image_path, self.mask * 255)  # Ensure proper scaling for saving
 
-        mask_with_scores = zip(self.mask, scores)
-
-        self.mask, self.score = max(mask_with_scores, key=lambda x: x[1])
-
-        print("mask shape ", self.mask.shape)
-
-        print("score ", self.score)
-
-        self.mask = np.array(self.mask, dtype=np.uint8)
-
-        mask_image_path = self.temp_dir+"/mask.png"  # Choose a suitable path for your mask image
-
-        cv2.imwrite(mask_image_path, self.mask)
-
-        self.overlay_mask(self.mask)
+            self.overlay_mask(self.mask)
+            
+        except Exception as e:
+            print(f"Error generating mask with Modal SAM: {e}")
+            # You could add fallback behavior here if needed
+            raise
 
     def overlay_mask(self, mask):
 
