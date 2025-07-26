@@ -1,0 +1,303 @@
+// Prisma schema for Segment3D annotation platform
+generator client {
+  provider = "prisma-client-py"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String   @unique
+  firstName String?
+  lastName  String?
+  avatar    String?
+  role      UserRole @default(ANNOTATOR)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  ownedProjects    Project[]     @relation("ProjectOwner")
+  projectMembers   ProjectMember[]
+  annotations      Annotation[]
+  qualityReviews   QualityReview[]
+  assignedTasks    Task[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  PROJECT_MANAGER
+  ANNOTATOR
+  REVIEWER
+  VIEWER
+}
+
+// Project Management
+model Project {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  type        ProjectType @default(MIXED)
+  settings    Json        @default("{}")
+  isArchived  Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  owner        User            @relation("ProjectOwner", fields: [ownerId], references: [id])
+  ownerId      String
+  members      ProjectMember[]
+  datasets     Dataset[]
+  labelSchema  LabelSchema[]
+  tasks        Task[]
+  stats        ProjectStats?
+
+  @@map("projects")
+}
+
+enum ProjectType {
+  MIXED     // Both 2D and 3D
+  IMAGE_2D  // 2D Images only
+  MODEL_3D  // 3D Models only
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  role      UserRole
+  joinedAt  DateTime @default(now())
+  isActive  Boolean  @default(true)
+
+  // Relations
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+// Dataset Management
+model Dataset {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  type        DatasetType
+  fileCount   Int         @default(0)
+  totalSize   BigInt      @default(0)
+  settings    Json        @default("{}")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+  files       File[]
+  tasks       Task[]
+
+  @@map("datasets")
+}
+
+enum DatasetType {
+  IMAGES    // 2D Images (PNG, JPG, etc.)
+  MODELS_3D // 3D Models (STL, PLY, OBJ, etc.)
+  MIXED     // Mixed content
+}
+
+model File {
+  id           String    @id @default(cuid())
+  filename     String
+  originalName String
+  mimeType     String
+  size         BigInt
+  checksum     String
+  storageUrl   String
+  metadata     Json      @default("{}")
+  uploadedAt   DateTime  @default(now())
+
+  // Relations
+  dataset      Dataset      @relation(fields: [datasetId], references: [id], onDelete: Cascade) 
+  datasetId    String
+  annotations  Annotation[]
+
+  @@map("files")
+}
+
+// Label Schema
+model LabelSchema {
+  id          String    @id @default(cuid())
+  name        String
+  color       String
+  description String?
+  type        LabelType @default(SEGMENTATION)
+  metadata    Json      @default("{}")
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  // Relations
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+  annotations Annotation[]
+
+  @@map("label_schemas")
+}
+
+enum LabelType {
+  SEGMENTATION    // Pixel/point segmentation
+  BOUNDING_BOX    // Rectangle bounding box
+  POLYGON         // Polygon annotation
+  KEYPOINT        // Point annotation
+  CLASSIFICATION  // Image/model classification
+}
+
+// Task Management
+model Task {
+  id          String     @id @default(cuid())
+  name        String?
+  status      TaskStatus @default(PENDING)
+  priority    Priority   @default(MEDIUM)
+  dueDate     DateTime?  
+  instructions String?
+  metadata    Json       @default("{}")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Relations
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId    String
+  dataset      Dataset      @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  datasetId    String
+  assignee     User?        @relation(fields: [assigneeId], references: [id])
+  assigneeId   String?
+  annotations  Annotation[]
+
+  @@map("tasks")
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// Annotation System
+model Annotation {
+  id         String           @id @default(cuid())
+  type       AnnotationType
+  data       Json             // Stores the actual annotation data (masks, points, etc.)
+  confidence Float?           @default(1.0)
+  metadata   Json             @default("{}")
+  version    Int              @default(1)
+  status     AnnotationStatus @default(DRAFT)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  // Relations
+  file         File             @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  fileId       String
+  task         Task?            @relation(fields: [taskId], references: [id])
+  taskId       String?
+  label        LabelSchema      @relation(fields: [labelId], references: [id])
+  labelId      String
+  annotator    User             @relation(fields: [annotatorId], references: [id])
+  annotatorId  String
+  
+  // Versioning
+  history      AnnotationHistory[]
+  reviews      QualityReview[]
+
+  @@map("annotations")
+}
+
+enum AnnotationType {
+  SEGMENTATION_2D    // 2D image segmentation
+  SEGMENTATION_3D    // 3D model segmentation
+  BOUNDING_BOX_2D    // 2D bounding box
+  BOUNDING_BOX_3D    // 3D bounding box
+  POLYGON_2D         // 2D polygon
+  KEYPOINT_2D        // 2D keypoint
+  KEYPOINT_3D        // 3D keypoint
+  CLASSIFICATION     // Classification label
+}
+
+enum AnnotationStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  NEEDS_REVISION
+}
+
+// Annotation History & Versioning
+model AnnotationHistory {
+  id           String   @id @default(cuid())
+  version      Int
+  data         Json     // Previous version data
+  changes      String?  // Description of changes
+  createdAt    DateTime @default(now())
+
+  // Relations  
+  annotation   Annotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  annotationId String
+
+  @@map("annotation_history")
+}
+
+// Quality Control
+model QualityReview {
+  id          String       @id @default(cuid())
+  status      ReviewStatus
+  score       Float?       // Quality score (0-1)
+  feedback    String?
+  suggestions Json         @default("[]")
+  reviewedAt  DateTime     @default(now())
+
+  // Relations
+  annotation   Annotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  annotationId String
+  reviewer     User       @relation(fields: [reviewerId], references: [id])
+  reviewerId   String
+
+  @@map("quality_reviews")
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_REVISION
+}
+
+// System Analytics
+model ProjectStats {
+  id              String   @id @default(cuid())
+  totalFiles      Int      @default(0)
+  totalAnnotations Int      @default(0)
+  completedTasks  Int      @default(0)
+  pendingTasks    Int      @default(0)
+  avgQualityScore Float?
+  lastUpdated     DateTime @default(now()) @updatedAt
+
+  // Relations (one-to-one with Project)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String  @unique
+
+  @@map("project_stats")
+} 

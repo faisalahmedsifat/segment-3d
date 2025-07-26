@@ -1,0 +1,36 @@
+{
+  "name": "segment3d-platform",
+  "version": "1.0.0",
+  "description": "SAM-Powered 3D/2D Annotation Platform - Modern web application for intelligent annotation",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean",
+    "test": "turbo run test",
+    "type-check": "turbo run type-check",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "setup": "npm install && npm run build",
+    "start:dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "cd apps/web && npm run dev",
+    "dev:backend": "cd services/api && python -m uvicorn main:app --reload --port 8000",
+    "deploy:modal": "cd services/sam && modal deploy sam_service.py"
+  },
+  "devDependencies": {
+    "@turbo/gen": "^1.10.0",
+    "turbo": "^1.10.0",
+    "prettier": "^3.0.0",
+    "concurrently": "^8.2.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+} 
