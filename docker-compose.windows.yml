@@ -1,0 +1,54 @@
+# Windows-specific Docker Compose Override
+# Usage: docker compose -f docker-compose.yml -f docker-compose.windows.yml up
+
+services:
+  segment3d:
+    # Windows-specific environment variables
+    environment:
+      - DISPLAY=host.docker.internal:0
+      - QT_X11_NO_MITSHM=1
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - MODAL_TOKEN_ID=${MODAL_TOKEN_ID:-}
+      - MODAL_TOKEN_SECRET=${MODAL_TOKEN_SECRET:-}
+      - LIBGL_ALWAYS_INDIRECT=1
+      - QT_QUICK_BACKEND=software
+    
+    # Remove user specification for Windows compatibility
+    user: ""
+    
+    # Add extra hosts for proper host resolution
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    
+    # Volumes optimized for Windows
+    volumes:
+      - ./data:/app/data:rw
+      - ./output:/app/output:rw  
+      - ./temp:/app/temp:rw
+      - ./data:/app/host_data:ro
+      - ./output:/app/host_output:rw
+    
+    # Windows-specific command that handles testing and X11
+    command: >
+      bash -c "
+        echo 'Starting Segment3D on Windows...' &&
+        echo 'DISPLAY is set to: $DISPLAY' &&
+        echo 'Running container tests first...' &&
+        python /app/scripts/run-gui-test.py &&
+        echo 'Tests completed. Attempting to start GUI application...' &&
+        echo 'If GUI fails, install X11 server (VcXsrv/Xming) and restart' &&
+        timeout 5s xauth list || echo 'xauth not available (normal on Windows)' &&
+        python src/main.py
+      "
+    
+    # Override restart policy for easier debugging
+    restart: "no"
+    
+    # Expose additional ports for debugging
+    ports:
+      - "5678:5678"  # Python debugger
+    
+    # Enable stdin and tty for interactive debugging
+    stdin_open: true
+    tty: true 

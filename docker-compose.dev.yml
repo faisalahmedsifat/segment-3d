@@ -1,0 +1,188 @@
+# Segment3D - Development Environment
+# Docker Compose Override for Development
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # Development configuration for main application
+  segment3d:
+    build:
+      target: development  # Use development stage from Dockerfile
+      args:
+        - DEBIAN_FRONTEND=noninteractive
+    
+    # Override container name for development
+    container_name: segment3d-dev
+    
+    # Development environment variables
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - MODAL_TOKEN_ID=${MODAL_TOKEN_ID:-}
+      - MODAL_TOKEN_SECRET=${MODAL_TOKEN_SECRET:-}
+    
+    # Development volume mounts
+    volumes:
+      # X11 socket for GUI display
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # X11 authentication (Linux)
+      - ${HOME}/.Xauthority:/home/segment3d/.Xauthority:ro
+      # Mount source code for hot reloading
+      - ./src:/app/src:rw
+      - ./data:/app/data:rw
+      - ./output:/app/output:rw
+      - ./temp:/app/temp:rw
+      # Development tools and configs
+      - ./.vscode:/app/.vscode:ro
+      - ./requirements.txt:/app/requirements.txt:ro
+    
+    # Override command for development
+    command: ["python", "src/main.py"]
+    
+    # Enable debugging
+    stdin_open: true
+    tty: true
+    
+    # Development port exposure
+    ports:
+      - "8000:8000"  # Future web interface
+      - "5678:5678"  # Python debugger (debugpy)
+    
+    # Remove resource limits for development
+    deploy: {}
+    
+    # Keep container running for debugging
+    restart: "no"
+
+  # Development database with exposed port
+  segment3d-db:
+    container_name: segment3d-postgres-dev
+    
+    # Expose database port for external tools
+    ports:
+      - "5432:5432"
+    
+    # Development database settings
+    environment:
+      - POSTGRES_DB=segment3d_dev
+      - POSTGRES_USER=segment3d_dev
+      - POSTGRES_PASSWORD=dev_password
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    
+    # Mount SQL scripts for development
+    volumes:
+      - segment3d_postgres_dev_data:/var/lib/postgresql/data
+      - ./scripts:/docker-entrypoint-initdb.d:ro
+    
+    restart: "no"
+
+  # Development Redis with exposed port
+  segment3d-redis:
+    container_name: segment3d-redis-dev
+    
+    # Expose Redis port for external tools
+    ports:
+      - "6379:6379"
+    
+    # Simpler command for development
+    command: redis-server --appendonly yes
+    
+    volumes:
+      - segment3d_redis_dev_data:/data
+    
+    restart: "no"
+
+  # Additional development services
+  
+  # Jupyter Notebook for data analysis and development
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: segment3d-jupyter
+    
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN:-segment3d}
+    
+    command: >
+      bash -c "
+        pip install --no-cache-dir jupyter jupyterlab ipywidgets &&
+        jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+      "
+    
+    ports:
+      - "8888:8888"
+    
+    volumes:
+      - ./src:/app/src:rw
+      - ./data:/app/data:rw
+      - ./notebooks:/app/notebooks:rw
+      - ./output:/app/output:rw
+    
+    networks:
+      - segment3d_network
+    
+    restart: "no"
+    
+    depends_on:
+      - segment3d-db
+      - segment3d-redis
+
+  # pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: segment3d-pgadmin
+    
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@segment3d.local
+      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_CONFIG_SERVER_MODE=False
+    
+    ports:
+      - "5050:80"
+    
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    
+    networks:
+      - segment3d_network
+    
+    restart: "no"
+    
+    depends_on:
+      - segment3d-db
+
+  # Redis Commander for Redis management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: segment3d-redis-commander
+    
+    environment:
+      - REDIS_HOSTS=local:segment3d-redis:6379
+    
+    ports:
+      - "8081:8081"
+    
+    networks:
+      - segment3d_network
+    
+    restart: "no"
+    
+    depends_on:
+      - segment3d-redis
+
+# Development-specific volumes
+volumes:
+  segment3d_postgres_dev_data:
+    driver: local
+  
+  segment3d_redis_dev_data:
+    driver: local
+  
+  pgadmin_data:
+    driver: local 

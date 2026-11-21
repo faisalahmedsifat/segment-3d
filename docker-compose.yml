@@ -1,0 +1,164 @@
+# Segment3D - AI-Powered 3D Model Segmentation Tool
+# Docker Compose Configuration
+# Following Docker Compose Specification (no version field as per 2024 standards)
+
+services:
+  # Main Segment3D Application
+  segment3d:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        - DEBIAN_FRONTEND=noninteractive
+    container_name: segment3d-app
+    hostname: segment3d
+    restart: unless-stopped
+    
+    # Environment variables
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - PYTHONUNBUFFERED=1
+      - MODAL_TOKEN_ID=${MODAL_TOKEN_ID:-}
+      - MODAL_TOKEN_SECRET=${MODAL_TOKEN_SECRET:-}
+    
+    # Volume mounts for X11 display forwarding and data persistence
+    volumes:
+      # Application data persistence (cross-platform)
+      - ./data:/app/data:rw
+      - ./output:/app/output:rw
+      - ./temp:/app/temp:rw
+      # Host directories for easy access
+      - ./data:/app/host_data:ro
+      - ./output:/app/host_output:rw
+    
+    # Network configuration
+    networks:
+      - segment3d_network
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; from src.modal_client import ModalSAMClient; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    
+    # Security context (commented out for Windows compatibility)
+    # user: "1000:1000"  # Uncomment for Linux/macOS, adjust based on your host user ID
+    
+    # Dependencies and startup order
+    depends_on:
+      - segment3d-db
+    
+    # Expose ports (if needed for future web interface)
+    # ports:
+    #   - "8000:8000"
+
+  # PostgreSQL Database (for future web version and data persistence)
+  segment3d-db:
+    image: postgres:15-alpine
+    container_name: segment3d-postgres
+    hostname: postgres
+    restart: unless-stopped
+    
+    environment:
+      - POSTGRES_DB=segment3d
+      - POSTGRES_USER=segment3d
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-segment3d_password}
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    
+    volumes:
+      - segment3d_postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    
+    networks:
+      - segment3d_network
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U segment3d -d segment3d"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Redis Cache (for future caching needs)
+  segment3d-redis:
+    image: redis:7-alpine
+    container_name: segment3d-redis
+    hostname: redis
+    restart: unless-stopped
+    
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-segment3d_redis}
+    
+    volumes:
+      - segment3d_redis_data:/data
+    
+    networks:
+      - segment3d_network
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+# Named volumes for data persistence
+volumes:
+  segment3d_postgres_data:
+    driver: local
+  
+  segment3d_redis_data:
+    driver: local
+
+# Networks
+networks:
+  segment3d_network:
+    driver: bridge
+    enable_ipv6: false
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+    labels:
+      - "com.segment3d.network=main"
+
+# Secrets (for production use)
+secrets:
+  modal_token:
+    external: true
+  postgres_password:
+    external: true
+  redis_password:
+    external: true 

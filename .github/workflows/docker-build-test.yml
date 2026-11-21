@@ -1,0 +1,236 @@
+name: Docker Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test-docker-config:
+    name: Test Docker Configuration
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Test docker-compose configuration
+      run: |
+        docker compose config --quiet
+        echo "✅ Docker Compose configuration is valid"
+        
+    - name: Test Windows docker-compose configuration  
+      run: |
+        docker compose -f docker-compose.yml -f docker-compose.windows.yml config --quiet
+        echo "✅ Windows Docker Compose configuration is valid"
+        
+    - name: Test development docker-compose configuration
+      run: |
+        docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet  
+        echo "✅ Development Docker Compose configuration is valid"
+
+  build-and-test:
+    name: Build and Test Docker Images
+    runs-on: ubuntu-latest
+    needs: test-docker-config
+    
+    strategy:
+      matrix:
+        platform: [linux/amd64]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Log in to Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: ${{ matrix.platform }}
+        push: false
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        target: runtime
+        
+    - name: Test container functionality
+      run: |
+        # Build the image locally for testing
+        docker compose build segment3d
+        
+        # Create test environment
+        echo "DISPLAY=:99" > .env.test
+        echo "PYTHONUNBUFFERED=1" >> .env.test
+        echo "MODAL_TOKEN_ID=" >> .env.test  
+        echo "MODAL_TOKEN_SECRET=" >> .env.test
+        
+        # Start Xvfb for headless testing
+        sudo apt-get update
+        sudo apt-get install -y xvfb
+        export DISPLAY=:99
+        Xvfb :99 -screen 0 1024x768x24 &
+        sleep 3
+        
+        # Run comprehensive tests
+        docker compose run --rm --env-file .env.test segment3d python /app/scripts/run-gui-test.py
+        
+    - name: Test development environment
+      run: |
+        # Test development image builds
+        docker compose -f docker-compose.yml -f docker-compose.dev.yml build --dry-run
+        
+    - name: Run security scan
+      uses: docker/scout-action@v1
+      if: github.event_name != 'pull_request'
+      with:
+        command: cves
+        image: ${{ steps.meta.outputs.tags }}
+        only-severities: critical,high
+        exit-code: true
+        
+    - name: Push Docker image
+      if: github.event_name != 'pull_request'
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: ${{ matrix.platform }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        target: runtime
+
+  multi-platform-build:
+    name: Multi-Platform Build
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: Build and push multi-platform image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        target: runtime
+
+  documentation-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check required documentation files
+      run: |
+        required_files=(
+          "README.md"
+          "DOCKER.md" 
+          "DOCKER_QUICKSTART.md"
+          "DOCKER_SUMMARY.md"
+          ".env.example"
+          "docker-compose.yml"
+          "docker-compose.dev.yml"
+          "docker-compose.windows.yml"
+          "Dockerfile"
+          ".dockerignore"
+          "Makefile"
+          "scripts/setup-x11.sh"
+          "scripts/run-docker.ps1"
+          "scripts/test-x11-windows.ps1"
+        )
+        
+        for file in "${required_files[@]}"; do
+          if [ -f "$file" ]; then
+            echo "✅ $file exists"
+          else
+            echo "❌ $file is missing"
+            exit 1
+          fi
+        done
+        
+    - name: Check Dockerfile best practices
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: Dockerfile
+        failure-threshold: warning
+
+  notify-success:
+    name: Notify Build Success
+    runs-on: ubuntu-latest
+    needs: [test-docker-config, build-and-test, documentation-check]
+    if: success()
+    
+    steps:
+    - name: Success notification
+      run: |
+        echo "🎉 All Docker builds and tests passed successfully!"
+        echo "✅ Configuration validation: PASSED"  
+        echo "✅ Image build and test: PASSED"
+        echo "✅ Documentation check: PASSED"
+        echo "✅ Container functionality: PASSED" 
