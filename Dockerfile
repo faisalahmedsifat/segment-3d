@@ -8,7 +8,10 @@
 # ==============================================================================
 # Build Stage: Install dependencies and prepare environment
 # ==============================================================================
-FROM python:3.10-slim as builder
+FROM python:3.11-slim AS builder
+
+# Use the same locked dependency set as local development.
+COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /uvx /bin/
 
 # Set build arguments
 ARG DEBIAN_FRONTEND=noninteractive
@@ -37,20 +40,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Create virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Install the exact dependencies recorded in uv.lock.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
+ENV PATH="/opt/venv/bin:$PATH"
 
 # ==============================================================================
 # Runtime Stage: Create minimal runtime environment
 # ==============================================================================
-FROM python:3.10-slim as runtime
+FROM python:3.11-slim AS runtime
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -99,6 +103,7 @@ RUN groupadd -r segment3d && \
 WORKDIR /app
 
 # Copy application code with proper ownership
+COPY --chown=segment3d:segment3d pyproject.toml uv.lock ./
 COPY --chown=segment3d:segment3d src/ ./src/
 COPY --chown=segment3d:segment3d data/ ./data/
 COPY --chown=segment3d:segment3d scripts/run-gui-test.py ./scripts/
@@ -121,7 +126,7 @@ CMD ["python", "src/main.py"]
 # ==============================================================================
 # Development Stage: Additional development tools
 # ==============================================================================
-FROM runtime as development
+FROM runtime AS development
 
 USER root
 
@@ -134,14 +139,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install development Python packages
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir \
-    ipython \
-    pytest \
-    black \
-    flake8 \
-    mypy
+# Install the project's locked development dependency group.
+COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /uvx /bin/
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_LINK_MODE=copy
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --group dev --no-install-project
 
 USER segment3d
 

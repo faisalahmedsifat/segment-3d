@@ -24,7 +24,7 @@ Local Application (PyQt5)     →     Modal Cloud (GPU)     →     Results
 
 ## 📋 Prerequisites
 
-- **Python 3.10+** (recommended: Anaconda/Miniconda)
+- **Python 3.11**
 - **Internet Connection** (for Modal cloud processing)
 - **Modal Account** (free tier includes $30/month credits)
 
@@ -37,53 +37,47 @@ cd segment-3d
 ```
 
 ### Step 2: Set Up Python Environment
-```bash
-# Using Conda (recommended)
-conda create -n segment3d python=3.10
-conda activate segment3d
 
-# Or using venv
-python -m venv segment3d
-# Windows:
-segment3d\Scripts\activate
-# Mac/Linux:
-source segment3d/bin/activate
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and sync the project environment. Python 3.11 is used by the current Docker image and is the supported version for this setup.
+
+```bash
+uv sync
 ```
 
-### Step 3: Install Dependencies
-```bash
-# Install core packages
-conda install opencv
-pip install numpy-stl vtk trimesh modal
+This creates a project-local `.venv` and installs the exact versions from `uv.lock`. To activate it manually:
 
-# For PyQt5 (if not already installed)
-conda install pyqt  # or pip install PyQt5
+```bash
+# Linux/macOS
+source .venv/bin/activate
+
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
 ```
+
+### Step 3: Run the Application
+
+```bash
+uv run python src/main.py
+```
+
+To install development tools (pytest, Black, Flake8, and mypy), run `uv sync --group dev`. Prefix project commands with `uv run` to execute them inside the managed environment.
 
 ### Step 4: Set Up Modal Cloud
 ```bash
 # Install and configure Modal
-pip install modal
-python -m modal setup
+uv run modal setup
 # This will open a browser for authentication
 ```
 
-### Step 5: Deploy SAM Model to Modal
-```bash
-modal deploy sam_modal.py
-```
+### Step 5: Configure the SAM Inference Service
 
-You should see:
-```
-✓ App deployed in ~20s! 🎉
-View Deployment: https://modal.com/apps/[your-username]/main/deployed/sam-segmentation
-```
+The desktop application calls a separately hosted Modal service named `sam-segmentation`, exposing the `segment_image_simple` function. The deployment source is not currently included in this repository, so `uv sync` installs the Modal client but does not deploy the SAM service. Configure the service separately before testing cloud segmentation.
 
 ## 🚀 Usage
 
 ### Running the Application
 ```bash
-python src/main.py
+uv run python src/main.py
 ```
 
 ### Step-by-Step Workflow
@@ -136,9 +130,10 @@ segment-3d/
 │       ├── file_selector.py    # File selection dialog
 │       ├── segmentation_tool.py # Main 3D interface
 │       └── stl_view.py         # STL viewer dialog
-├── sam_modal.py               # Modal SAM deployment
-├── test_modal_integration.py  # Integration tests
-├── requirements.txt           # Dependencies
+├── pyproject.toml             # Project metadata and dependencies
+├── uv.lock                    # Reproducible dependency lockfile
+├── .python-version            # Supported Python version
+├── requirements.txt           # Compatibility export of locked dependencies
 ├── output/                    # Generated STL files
 └── temp/                      # Temporary processing files
 ```
@@ -186,33 +181,28 @@ Expected output:
 
 **"ModuleNotFoundError: No module named 'cv2'"**
 ```bash
-conda install opencv
-# or
-pip install opencv-python
+uv sync
 ```
 
 **"No module named 'modal'"**
 ```bash
-pip install modal
-python -m modal setup
+uv run modal setup
 ```
 
 **"Modal segmentation failed"**
 - Check internet connection
 - Verify Modal deployment: `modal app list`
-- Re-deploy if needed: `modal deploy sam_modal.py`
+- The Modal SAM service must be deployed separately; this repository currently contains only the client integration.
 
 **STL Import Issues**
+Ensure the project environment is synchronized so `numpy-stl` is installed:
 ```bash
-pip uninstall stl
-pip install numpy-stl
+uv sync
 ```
 
 **VTK/Qt Issues**
 ```bash
-conda install vtk pyqt
-# or
-pip install vtk PyQt5
+uv sync
 ```
 
 ### Debug Mode
@@ -226,10 +216,7 @@ logging.basicConfig(level=logging.DEBUG)
 ## 🔧 Configuration
 
 ### Modal Settings
-Edit `sam_modal.py` to customize:
-- **GPU Type**: Change `gpu="T4"` to `gpu="A10G"` for faster processing
-- **Timeout**: Modify `scaledown_window=300` for different idle times
-- **Model**: Switch SAM model variants (vit_b, vit_l, vit_h)
+The SAM service deployment is maintained separately from this repository. Its configuration is not editable here.
 
 ### Application Settings
 Edit `segmentation_tool.py`:
