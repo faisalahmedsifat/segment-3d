@@ -23,17 +23,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxft2 \
     libxss1 \
-    libgconf-2-4 \
     libxi6 \
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \
-    libasound2 \
+    libasound2t64 \
     libpangocairo-1.0-0 \
-    libatk1.0-0 \
+    libatk1.0-0t64 \
     libcairo-gobject2 \
-    libgtk-3-0 \
-    libgdk-pixbuf2.0-0 \
+    libgtk-3-0t64 \
+    libgdk-pixbuf-2.0-0 \
     wget \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -63,23 +62,22 @@ ENV PYTHONUNBUFFERED=1 \
 # Install only runtime system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Essential GUI libraries
-    libgl1-mesa-glx \
+    libgl1 \
     libglu1-mesa \
     libxrender1 \
     libxext6 \
     libxft2 \
     libxss1 \
-    libgconf-2-4 \
     libxi6 \
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \
-    libasound2 \
+    libasound2t64 \
     libpangocairo-1.0-0 \
-    libatk1.0-0 \
+    libatk1.0-0t64 \
     libcairo-gobject2 \
-    libgtk-3-0 \
-    libgdk-pixbuf2.0-0 \
+    libgtk-3-0t64 \
+    libgdk-pixbuf-2.0-0 \
     # X11 utilities for display forwarding
     x11-apps \
     xauth \
