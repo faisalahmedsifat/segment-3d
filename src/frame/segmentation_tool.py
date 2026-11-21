@@ -95,7 +95,7 @@ class SegmentationTool(QMainWindow):
                 print("Warning: Modal SAM deployment health check failed")
         except Exception as e:
             print(f"Failed to initialize Modal SAM client: {e}")
-            print("Please make sure Modal is installed and deployed: pip install modal && modal deploy sam_modal.py")
+            print("Authenticate with Modal and deploy the SAM service: uv run modal setup && uv run modal deploy sam_modal.py")
             raise
 
         self.setGeometry(100, 100, 800, 600)

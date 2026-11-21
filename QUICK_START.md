@@ -1,79 +1,55 @@
-# 🚀 Quick Start Guide
+# Segment3D Quick Start
 
-Get your 3D segmentation tool running in 5 minutes!
+## Prerequisites
 
-## ⚡ Prerequisites
-- Python 3.10+ with Conda/Miniconda
-- Internet connection
-- Free Modal account
+- Linux desktop session with a working graphical display
+- Python 3.11
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- A Modal account for cloud-based SAM inference
 
-## ⚡ Installation (5 minutes)
+## 1. Install the project
 
-### 1. Setup Environment
 ```bash
-# Create and activate environment
-conda create -n segment3d python=3.10
-conda activate segment3d
-
-# Install dependencies
-conda install opencv pyqt
-pip install numpy-stl vtk trimesh modal
+git clone https://github.com/faisalahmedsifat/segment-3d.git
+cd segment-3d
+git checkout optimization
+uv sync
 ```
 
-### 2. Setup Modal Cloud
-```bash
-# Configure Modal (opens browser)
-python -m modal setup
+## 2. Authenticate with Modal
 
-# Deploy SAM model (~20 seconds)
-modal deploy sam_modal.py
+```bash
+uv run modal setup
 ```
 
-### 3. Run Application
+Complete the browser authentication flow.
+
+## 3. Deploy the SAM inference service
+
 ```bash
-python src/main.py
+uv run modal deploy sam_modal.py
 ```
 
-## ⚡ First Test
+The first deployment builds the inference image, installs PyTorch and Segment Anything, and downloads the SAM ViT-B checkpoint. This may take several minutes. Inference uses a Modal T4 GPU and is subject to Modal usage charges.
 
-1. **Select STL File**: Click "Browse" → Choose any .stl file
-2. **Open Interface**: Click "Continue" 
-3. **Segment**: Right-click on the 3D model
-4. **Watch Console**: Look for "Modal segmentation successful!"
-5. **View Results**: Red overlay shows segmented region
+Confirm the app is deployed:
 
-## ⚡ Expected Output
 ```bash
-Initializing Modal SAM client...
-Modal SAM deployment is healthy and ready!
-Generating mask using Modal SAM...
-Modal segmentation successful! Message: Segmentation successful
+uv run modal app list
 ```
 
-## ⚡ Troubleshooting
+## 4. Launch the desktop application
 
-**Import Errors?**
 ```bash
-pip install opencv-python  # if cv2 missing
-pip install numpy-stl      # if stl issues
+uv run python src/main.py
 ```
 
-**Modal Issues?**
-```bash
-modal app list             # check deployment
-modal deploy sam_modal.py  # re-deploy if needed
-```
+Select an STL file, continue to the 3D viewer, and right-click the model to request a segmentation.
 
-**Need Test STL?** Download from [Thingiverse](https://www.thingiverse.com) or use any .stl file.
+## Troubleshooting
 
-## ⚡ What's Next?
+- **Qt cannot load `xcb`:** use the `opencv-python-headless` dependency already declared in `pyproject.toml`; avoid installing `opencv-python` alongside PyQt5.
+- **Modal function not found:** authenticate with `uv run modal setup`, then deploy with `uv run modal deploy sam_modal.py`.
+- **Segmentation request fails:** inspect the Modal app logs in the Modal dashboard and confirm the `sam-segmentation` app is deployed.
 
-- ✅ Your app is running with cloud AI
-- ✅ No local GPU/CUDA needed  
-- ✅ ~$0.008 per segmentation
-- ✅ 3,750 free segmentations/month
-
-Ready to build the web version? See the full [README.md](README.md) for details!
-
----
-**🎉 You're all set!** Right-click on 3D models to see AI segmentation in action. 
+For the full setup and architecture notes, see [README.md](README.md).

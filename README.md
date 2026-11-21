@@ -62,16 +62,24 @@ uv run python src/main.py
 
 To install development tools (pytest, Black, Flake8, and mypy), run `uv sync --group dev`. Prefix project commands with `uv run` to execute them inside the managed environment.
 
-### Step 4: Set Up Modal Cloud
+### Step 4: Authenticate and Deploy the SAM Inference Service
+
+The repository includes `sam_modal.py`, which defines the Modal app `sam-segmentation` and the `segment_image_simple` inference function. Deploy it once to your Modal account:
+
 ```bash
-# Install and configure Modal
 uv run modal setup
-# This will open a browser for authentication
+uv run modal deploy sam_modal.py
 ```
 
-### Step 5: Configure the SAM Inference Service
+The first command opens the Modal authentication flow; the second deploys the service. The deployment builds an image containing PyTorch, Segment Anything, and the SAM ViT-B checkpoint. The first build can take several minutes. Inference runs on a Modal T4 GPU; GPU usage is billed by Modal. The model is cached in each warm inference container.
 
-The desktop application calls a separately hosted Modal service named `sam-segmentation`, exposing the `segment_image_simple` function. The deployment source is not currently included in this repository, so `uv sync` installs the Modal client but does not deploy the SAM service. Configure the service separately before testing cloud segmentation.
+Check the deployment in your Modal dashboard or run:
+
+```bash
+uv run modal app list
+```
+
+After deployment, launch the desktop app with `uv run python src/main.py`. Re-run `uv run modal deploy sam_modal.py` whenever you change the deployment source.
 
 ## 🚀 Usage
 
@@ -123,6 +131,7 @@ Modal segmentation successful! Message: Segmentation successful
 
 ```
 segment-3d/
+├── sam_modal.py               # Modal SAM inference deployment
 ├── src/
 │   ├── main.py                 # Application entry point
 │   ├── modal_client.py         # Modal cloud integration
